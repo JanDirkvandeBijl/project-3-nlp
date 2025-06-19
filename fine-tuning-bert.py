@@ -15,10 +15,11 @@ from sklearn.metrics import accuracy_score, recall_score
 # Disable tokenizer parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Set CUDA_VISIBLE_DEVICES to use GPU 1 and 2
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"  # Use GPU 1 and 2
 
-# Use multiple GPUs (cuda:0, cuda:1)
+# Set CUDA_VISIBLE_DEVICES to use GPU 3 and 4
+os.environ["CUDA_VISIBLE_DEVICES"] = "2, 3"  # Use GPU 3 and 4
+
+# Use multiple GPUs (cuda:2, cuda:3)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using GPUs:", os.environ["CUDA_VISIBLE_DEVICES"] if torch.cuda.is_available() else "Using CPU:", device)
 if torch.cuda.is_available():
@@ -40,19 +41,19 @@ test_df = test_df.rename(columns={"headline": "text", "label": "labels"})
 train_df, eval_df = train_test_split(full_train_df, test_size=0.2, random_state=42)
 
 # Define the directory for saving the model and tokenizer
-persistent_directory = "saved-model"
-os.makedirs(persistent_directory, exist_ok=True)  # Ensure the directory exists
+persistent_directory = "./model_directory"  # Change this path if needed
+os.makedirs(persistent_directory, exist_ok=True)  # Create the directory if it doesn't exist
 
-# Load tokenizer and model
+# Load tokenizer
 if os.path.exists(os.path.join(persistent_directory, "config.json")):
-    # Load saved model and tokenizer if they exist
+    # Load saved model and tokenizer if the configuration exists
     tokenizer = AutoTokenizer.from_pretrained(persistent_directory)
     model = AutoModelForSequenceClassification.from_pretrained(persistent_directory)
     print("Loaded model from saved directory.")
 else:
     # Initialize new model and tokenizer, then save them for later use
-    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
-    model = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=2)
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
     
     # Save the model and tokenizer properly, ensure config.json is included
     model.save_pretrained(persistent_directory)  # Save model weights and config
@@ -90,7 +91,7 @@ def compute_metrics(pred):
     recall = recall_score(labels, preds, average='binary')  # Use recall for binary classification
     return {"accuracy": acc, "recall": recall}
 
-# TrainingArguments with early stopping and model tracking based on recall
+# TrainingArguments with best model tracking and early stopping
 training_args = TrainingArguments(
     output_dir="./results",
     evaluation_strategy="epoch",
@@ -117,18 +118,18 @@ trainer = Trainer(
     callbacks=[EarlyStoppingCallback(early_stopping_patience=1)]
 )
 
-# Train the model with early stopping; the best model is restored automatically
+# Train with early stopping; best model is restored
 trainer.train()
 
-# Save the best model after training
+# Save best model
 trainer.model.save_pretrained(persistent_directory)
 tokenizer.save_pretrained(persistent_directory)
 
-# Prepare the test dataset
+# Prepare test set
 test_dataset = Dataset.from_pandas(test_df).map(tokenize_function, batched=True)
 test_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
 
-# Predict with the trained model
+# Predict
 preds = trainer.predict(test_dataset)
 output_labels = preds.predictions.argmax(-1)
 
